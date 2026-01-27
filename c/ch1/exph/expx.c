@@ -1,6 +1,7 @@
 #include <petsc.h>
 
-double horner_exp_terms(double x, int n_start, int n_end)
+// accumulate the local contribution to exp(x) using nested iteration for n in [n_start, n_end]
+static double horner_exp_terms(double x, int n_start, int n_end)
 {
     if (n_end < n_start)
         return 0.0;
@@ -12,7 +13,7 @@ double horner_exp_terms(double x, int n_start, int n_end)
         result = 1.0 + result * x / i;
     }
 
-    // Multiply by x^k/k! at the end
+    // Multiply by x^k/k! at the end for k = n_start
     for (int i = 0; i < n_start; i++)
     {
         result *= x / (i + 1);
