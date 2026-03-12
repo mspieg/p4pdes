@@ -5,7 +5,7 @@ static char help[] =
 "Energy is conserved (for these particular conditions/source) and an extra\n"
 "'monitor' is demonstrated.  Discretization is by centered finite differences.\n"
 "Converts the PDE into a system  X_t = G(t,X) (PETSc type 'nonlinear') by\n"
-"method of lines.  Uses backward Euler time-stepping by default.\n";
+"method of lines.  Uses bdf 2 time-stepping by default.\n";
 
 #include <petsc.h>
 
