@@ -22,12 +22,14 @@ int main(int argc,char **args) {
   DMDALocalInfo info;
 
   PetscCall(PetscInitialize(&argc,&args,NULL,help));
+  //set default values for parameters in AppCtx
   user.rho   = 10.0;
   user.M     = PetscSqr(user.rho / 12.0);
   user.alpha = user.M;
   user.beta  = 16.0 * user.M;
   user.noRinJ = PETSC_FALSE;
 
+  // set options from the command line
   PetscOptionsBegin(PETSC_COMM_WORLD,"rct_","options for reaction",""); 
   PetscCall(PetscOptionsBool("-noRinJ","do not include R(u) term in Jacobian",
       "reaction.c",user.noRinJ,&(user.noRinJ),NULL));
