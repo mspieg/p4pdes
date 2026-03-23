@@ -129,12 +129,14 @@ int main(int argc,char **argv) {
     DM             da, da_after;
     SNES           snes;
     KSP            ksp;
-    Vec            u_initial, u, u_exact;
+    Vec            u_initial, u, u_exact, u_out;
     PoissonCtx     user;
     DMDALocalInfo  info;
     PetscReal      errinf, normconst2h, err2h;
     char           gridstr[99];
     ExactFcnVec    getuexact;
+    PetscViewer    viewer;
+    char        output_filename[PETSC_MAX_PATH_LEN] = "fish_solution.vtr"; // default output filename
 
     // fish defaults:
     PetscInt       dim = 2;                  // 2D
@@ -182,6 +184,9 @@ int main(int argc,char **argv) {
     PetscCall(PetscOptionsEnum("-problem",
          "problem type; determines exact solution and RHS",
          "fish.c",ProblemTypes,(PetscEnum)problem,(PetscEnum*)&problem,NULL));
+    PetscCall(PetscOptionsString("-filename",
+         "file for solution vector; e.g., -filename solution.vtk",
+         "fish.c",output_filename,output_filename,sizeof(output_filename),NULL));
     PetscOptionsEnd();
     user.g_bdry = g_bdry_ptr[dim-1][problem];
     user.f_rhs = f_rhs_ptr[dim-1][problem];
@@ -249,13 +254,28 @@ int main(int argc,char **argv) {
     PetscCall(SNESGetDM(snes,&da_after)); // SNES owns da_after; do not destroy it
     PetscCall(DMDAGetLocalInfo(da_after,&info));
     PetscCall(DMCreateGlobalVector(da_after,&u_exact));
+    PetscCall(VecDuplicate(u_exact,&u_out)); // for getuexact
+    PetscCall(VecCopy(u,u_out)); 
     getuexact = getuexact_ptr[dim-1];
     PetscCall((*getuexact)(&info,u_exact,&user));
+
+    // dump solution and true_solution to file 
+    PetscCall(PetscViewerVTKOpen(PETSC_COMM_WORLD,output_filename,FILE_MODE_WRITE,&viewer));
+    PetscCall(PetscObjectSetName((PetscObject)u_out,"solution"));
+    PetscCall(PetscObjectSetName((PetscObject)u_exact,"true_solution"));
+    PetscCall(VecView(u_out,viewer));
+    PetscCall(VecView(u_exact,viewer));
+    PetscCall(PetscViewerDestroy(&viewer));
+
+
     PetscCall(VecAXPY(u,-1.0,u_exact));   // u <- u + (-1.0) uexact
     PetscCall(VecDestroy(&u_exact));      // no longer needed
     PetscCall(VecNorm(u,NORM_INFINITY,&errinf));
     PetscCall(VecNorm(u,NORM_2,&err2h));
 //ENDGETSOLUTION
+
+
+
 
     switch (dim) {
         case 1:
