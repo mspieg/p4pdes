@@ -18,17 +18,13 @@ parser.add_argument('-account',metavar='ACCOUNT', type=str,
                      default='apam',help='Slurm account')
 parser.add_argument('-email', metavar='EMAIL', type=str,
                     default='USERNAME@columbia.edu', help='email address')
-parser.add_argument('-lev', type=int, default=7, metavar='X',
-                    help='''refinement level for -da_refine in {4,5,6,7,8}''')
-parser.add_argument('-maxP', type=int, default=16, metavar='P',
-                    help='''maximum number of MPI processes;
-power of 2 like 8,16,64,128,... recommended''')
-parser.add_argument('-minP', type=int, default=2, metavar='P',
-                    help='''minimum number of MPI processes;
-power of 2 like 1,2,4,8,16,... recommended''')
-parser.add_argument('-minutes', type=int, default=120, metavar='T',
+parser.add_argument('-lev0', type=int, default=3, metavar='X',
+                    help='refinement level for a single core 3 is 17x17x17''')
+parser.add_argument('-Plevel', type=int, default=4, metavar='P',
+                    help='maximum refinement level for MPI processes P=(Plevel+1)**3')
+parser.add_argument('-minutes', type=int, default=60, metavar='T',
                     help='''max time in minutes for SLURM job''')
-parser.add_argument('-pernode', type=int, default=2, metavar='K',
+parser.add_argument('-pernode', type=int, default=8, metavar='K',
                     help='''maximum number of MPI processes to assign to each node;
 small value may increase streams bandwidth and performance''')
 
@@ -37,9 +33,8 @@ args = parser.parse_args()
 print('settings: %d max tasks per node, %s as email, request time %d minutes'
       % (args.pernode,args.email,args.minutes))
 
-m_min = int(np.floor(np.log(float(args.minP)) / np.log(2.0)))
-m_max = int(np.floor(np.log(float(args.maxP)) / np.log(2.0)))
-Plist = np.round(2.0**np.arange(m_min,m_max+1)).astype(int).tolist()
+levels = args.Plevel - args.lev0
+Plist = [ (p+1)**3 for p in range(args.Plevel) ]
 print('runs (ch6/fish.c) will use P in'),
 print(Plist)
 
@@ -56,10 +51,10 @@ rawpre = r'''#!/bin/bash
 #SBATCH --output=%s
 
 # set some environment variables for apptainer
-module load openmpi/gcc/64/4.1.7a1
 module load singularity 
 export APPTAINER_TMPDIR=$SINGULARITY_TMPDIR
 export APPTAINER_BINDPATH=$SINGULARITY_BINDPATH
+module load openmpi/gcc/64/4.1.7a1
 
 # set the container for firedrake
 SIF=/burg/home/mws6/sifs/firedrake-ts.sif
@@ -69,7 +64,7 @@ GO="mpiexec -n $SLURM_NTASKS apptainer exec  $SIF"
 cd $SLURM_SUBMIT_DIR
 '''
 
-rawminimal = r'''
+rawfish = r'''
 # FISH:  solve 3D Poisson equation
 # using optimal CG+GMG solver
 # -da_refine 7 is 257x257x257
@@ -77,21 +72,21 @@ rawminimal = r'''
 # coarse grid is 9x9x9 so should work up to several hundred processors
 $GO ./fish -fsh_dim 3 -da_refine %d -pc_mg_levels %d -pc_type mg -ksp_type cg -snes_type ksponly -ksp_converged_reason -ksp_monitor -log_view
 
+
 '''
 
 
-for P in Plist:
-    grid = 2**(args.lev+1) + 1
-    run = rawminimal % (args.lev,args.lev-1)
+for l,P in enumerate(Plist):
+    rlev = args.lev0 + l  # refinement level
+    grid = 2**(rlev+1) + 1
+    grid0 = 2**(args.lev0+1)+1
+    wrun = rawfish % (rlev, rlev-1)
 
-    pernode = min(P,args.pernode)
-    nodes = P / pernode
-    print('  case: run with %d nodes, %d tasks per node, and P=%d processes'
-          % (nodes,pernode,P))
-    print('        on %d x %d x %d grid; each process has %d degrees of freedom'
-          % (grid,grid,grid, grid**3/P))
+    pernode = args.pernode
+    nodes = np.ceil(P / pernode)
+    print(f'  case: {nodes} nodes, {pernode} tasks per node, and P={P} processes on {grid}x{grid}x{grid} grid')
 
-    root = f"strong_fish_N{grid:03}_P{P:03}_p{pernode:02}"
+    root = f'weak_fish_N0{grid0}_P{P:03}_p{pernode}'
     preamble = rawpre % (args.account,P,pernode,args.minutes,args.email,
                          root + r'.o.%j')
 
@@ -99,6 +94,6 @@ for P in Plist:
     print('    writing %s ...' % batchname)
     batch = open(batchname,'w')
     batch.write(preamble)
-    batch.write(run)
+    batch.write(wrun)
     batch.close()
 
